@@ -14,7 +14,11 @@ __global__
 void MatrixAdditionElement(int* left, int* right, int* result, size_t width)
 {
     size_t index = blockDim.x * blockIdx.x + threadIdx.x;
-    result[index] = left[index] + right[index];
+
+    if (index < width * width)
+    {
+        result[index] = left[index] + right[index];
+    }
 }
 
 //3.1 b 
@@ -43,15 +47,19 @@ void MatrixAdditionCol(int* left, int* right, int* result, size_t width)
 
     if (index < width)
     {
-        for (size_t i = index; i < elements; i += blockDim.x)
+        for (size_t i = index; i < elements; i += width)
         {
             result[i] = left[i] + right[i];
         }
     }
 }
 
-void Driver3_1(size_t width)
+void Driver3_1()
 {
+    std::cout << "Starting 3_1\nEnter width: ";
+    size_t width;
+    std::cin >> width;
+
     int* A, *B, *C1, *C2, *C3;
     size_t elements = width * width;
 
@@ -78,11 +86,10 @@ void Driver3_1(size_t width)
         if (C1[i] != C2[i] || C2[i] != C3[i])
         {
             std::cout << "Mismatch at " << i << '\n';
+            std::cout << C1[i] << ' ' << C2[i] << ' ' << C3[i] << '\n';
             break;
         }
     }
-
-    std::cout << "Finished\n";
 
     cudaFree(A);
     cudaFree(B);
@@ -91,12 +98,59 @@ void Driver3_1(size_t width)
     cudaFree(C3);
 }
 
+//3.2
+__global__
+void MatrixVectorMult(float* matrix, float* vectorIn, float* vectorOut, size_t width)
+{
+    size_t index = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (index < width * width)
+    {
+        size_t target = index / width;
+
+        atomicAdd(vectorOut + target, matrix[index] * vectorIn[target]);
+    }
+}
+
+void Driver3_2()
+{
+    float* matrix, * vectorIn, * vectorOut;
+    size_t width = 10;
+    size_t elements = width * width;
+
+    cudaMallocManaged(&matrix, sizeof(float) * elements);
+    cudaMallocManaged(&vectorIn, sizeof(float) * width);
+    cudaMallocManaged(&vectorOut, sizeof(float) * width);
+
+    cudaMemset(vectorOut, 0, sizeof(float) * width);
+    
+    for (int i = 0; i < elements; ++i)
+    {
+        matrix[i] = i;
+    }
+
+    for (int i = 0; i < width; ++i)
+    {
+        vectorIn[i] = 1;
+    }
+
+    MatrixVectorMult<<<width * width / 256 + 1, 256>>>(matrix, vectorIn, vectorOut, width);
+
+    cudaDeviceSynchronize();
+
+    for (size_t i = 0; i < width; ++i)
+    {
+        std::cout << vectorOut[i] << ' ';
+    }
+
+    cudaFree(matrix);
+    cudaFree(vectorIn);
+    cudaFree(vectorOut);
+}
+
 int main()
 {
-    std::cout << "Starting 3_1\nEnter width: ";
-    size_t width;
-    std::cin >> width;
-    Driver3_1(width);
-
+    Driver3_1();
+    Driver3_2();
     return 0;
 }
